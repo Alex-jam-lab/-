@@ -1,0 +1,52 @@
+import os
+import numpy as np
+from tqdm import tqdm
+import pickle
+import jieba
+from gensim.models import Word2Vec
+
+# 用户输入邮件内容
+email_text = input('请输入邮件内容：')
+
+# 使用jieba进行分词
+words = list(jieba.cut(email_text))
+
+# 读取停用词表
+with open('stopwords.txt', 'r', encoding='UTF-8') as f:
+    stopwords = set(f.read().strip().split('\n'))
+
+# 过滤停用词
+filtered_words = [w for w in words if w not in stopwords]
+
+# 检查Word2Vec模型文件是否存在
+if os.path.exists('./word2vec.model'):
+    w2c = Word2Vec.load('./word2vec.model')
+else:
+    raise FileNotFoundError("Word2Vec模型文件未找到，请先训练模型。")
+
+# 准备向量累加
+vec = np.zeros((1, 100))
+count = 0  # 用于计数有效的词向量数量
+
+# 使用tqdm显示进度条
+for word in tqdm(filtered_words, desc='正在处理单词向量'):
+    try:
+        vec += w2c.wv.get_vector(word).reshape((1, 100))
+        count += 1
+    except KeyError:
+        continue
+
+# 如果找到了至少一个词向量，进行平均化
+if count > 0:
+    vec /= count
+else:
+    print("可能是垃圾邮件。")
+    exit()
+
+# 加载预训练的Naive Bayes分类器
+with open('BernoulliNB.pickle', 'rb') as f:
+    nb = pickle.load(f)
+
+# 预测邮件类别
+prediction = nb.predict(vec)
+print(f"预测结果: {'垃圾邮件' if prediction[0] == 1 else '非垃圾邮件'}")
